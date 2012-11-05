@@ -10,12 +10,7 @@ typedef struct {
    int numer;  // numer watku
 } par_t;
 
-volatile int running_threads = 0;
-volatile int p_count = 0;
-pthread_mutex_t running_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
-
-void *count_primes2(void *arg)
+void *count_primes(void *arg)
 {
 	par_t *args = (par_t *)arg;
 
@@ -38,25 +33,12 @@ void *count_primes2(void *arg)
 			primes_count++;
 	}
 
-	//sleep(15 - args->numer);
 
 	printf("\twatek: %d, poczatek %d, koniec %d, primes %d\n", args->numer, args->pocz, args->kon, primes_count);
-
-	free(arg);
-
-	pthread_mutex_lock(&running_mutex);
-	p_count += primes_count;
-	running_threads--;
-	if (!running_threads) {
-		pthread_cond_signal(&cond);
-	}
-	pthread_mutex_unlock(&running_mutex);
-
-
-	return 0;
+	return (void *) primes_count;
 }
 
-int main2(int argc, char *argv[])
+int main1(int argc, char *argv[])
 {
 	if(argc != 4) {
 		printf("Proper usage: ./lab2 range_start range_end thread_count\n");
@@ -68,39 +50,26 @@ int main2(int argc, char *argv[])
 	int range_start = atoi(argv[1]);
 	int range_end = atoi(argv[2]);
 	int threads_count = atoi(argv[3]);
-	int range_length = (range_end - range_start) / (threads_count * 4);
+	int prime_count = 0;
+	int range_length = (range_end - range_start) / threads_count;
+	pthread_t *tid = (pthread_t *) malloc(threads_count*sizeof(pthread_t));
+	par_t *args_tab = (par_t *) malloc(threads_count*sizeof(par_t));
 
-	int i = 0;
-	pthread_t tid;
-
-	while(1) {
-		if(running_threads < threads_count) {
-			if (range_start + (i+1)*range_length <= range_end) {
-				par_t *args = malloc(sizeof(par_t));
-				args->numer = i;
-				args->pocz = range_start + i * range_length;
-				args->kon = range_start + (i+1) * range_length;
-				pthread_create(&tid, NULL, count_primes2, (void *)args);
-				pthread_mutex_lock(&running_mutex);
-				running_threads++;
-				pthread_mutex_unlock(&running_mutex);
-				i++;
-			} else {
-				printf("%d\n", i);
-				break;
-			}
-		}
+	int i, status;
+	for(i = 0; i < threads_count; i++) {
+		args_tab[i].numer = i;
+		args_tab[i].pocz = range_start + i * range_length;
+		args_tab[i].kon = range_start + (i+1) * range_length;
+		par_t *args = &args_tab[i];
+		pthread_create(&tid[i], NULL, count_primes, (void *)args);
+	}
+	for(i = 0; i < threads_count; i++) {
+		pthread_join(tid[i], (void*)&status);
+		printf("watek %d zakonczony, kod powrotu %d\n", tid[i], status);
+		prime_count += status;
 	}
 
-	pthread_mutex_lock(&running_mutex);
-	while(running_threads > 0) {
-		pthread_cond_wait( &cond, &running_mutex );
-	}
-	printf("Liczb pierwszych: %d\n", p_count);
-	pthread_mutex_unlock(&running_mutex);
-
-
-
+	printf("Liczb pierwszych: %d\n", prime_count);
 
 	return 0;
 }

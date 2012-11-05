@@ -3,73 +3,98 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <math.h>
+#include <sched.h>
 
-typedef struct {
-   int pocz;    // poczatek zakresu
-   int kon;      // koniec zakresu
-   int numer;  // numer watku
-} par_t;
+#define THREADS_COUNT 9
+int current_threads_count = 0;
+int tid[THREADS_COUNT] = {-1, -1, -1, -1, -1, -1, -1, -1, -1};
+int absolute_time_to_finish[THREADS_COUNT] = {-1, -1, -1, -1, -1, -1, -1, -1, -1};
 
-void *count_primes(void *arg)
-{
-	par_t *args = (par_t *)arg;
-
-	sleep(1);
-
-	int primes_count = 0;
-
-	printf("Proces: %d, watek: %d\n", getpid(), args->numer);
+int get_thread_index(int t_id){
 	int i;
-	for(i = args->pocz; i < args->kon; i++) {
-		int c;
-		int prime = 1;
-		for (c = 2; c <= i/2; c++) {
-			if (i % c == 0) {
-				prime = 0;
-				break;
-			}
+	for(i = 0; i < THREADS_COUNT; i++) {
+		if(tid[i] == t_id) {
+			break;
 		}
-		if (prime && i != 0 && i != 1)
-			primes_count++;
 	}
-
-
-	printf("\twatek: %d, poczatek %d, koniec %d, primes %d\n", args->numer, args->pocz, args->kon, primes_count);
-	return (void *) primes_count;
+	return i;
 }
 
-int main1(int argc, char *argv[])
+void bubble_sort()
 {
-	if(argc != 4) {
-		printf("Proper usage: ./lab2 range_start range_end thread_count\n");
-		return 0;
+  int i, j, temp;
+
+  for (i = (THREADS_COUNT - 1); i > 0; i--)
+  {
+    for (j = 1; j <= i; j++)
+    {
+      if (absolute_time_to_finish[j-1] < absolute_time_to_finish[j])
+      {
+        temp = absolute_time_to_finish[j-1];
+        absolute_time_to_finish[j-1] = absolute_time_to_finish[j];
+        absolute_time_to_finish[j] = temp;
+
+        temp = tid[j-1];
+        tid[j-1] = tid[j];
+        tid[j] = temp;
+      }
+    }
+  }
+}
+
+void *thread_function(void *arg) {
+	int sleep_time = (int) arg;
+
+	sleep(sleep_time);
+
+	tid[get_thread_index(pthread_self())] = -1;
+	absolute_time_to_finish[get_thread_index(pthread_self())] = -1;
+
+	return 0;
+}
+
+int get_first_empty_index() {
+	int i;
+	for(i = 0; i < THREADS_COUNT; i++) {
+		if(tid[i] == -1) {
+			break;
+		}
 	}
+	return i;
+}
 
+typedef struct sched_param s_param;
 
+int main(int argc, char *argv[]) {
+	char c;
+	while(1) {
+		scanf("%c", &c);
+		if(current_threads_count < THREADS_COUNT) {
+			printf("Do U want to create a thread? (1 - YES)\n");
+			int confirmation;
+			scanf("%d", &confirmation);
+			if(confirmation == 1){
+				printf("Time in seconds to finish\n");
+				int relative_time;
+				scanf("%d", &relative_time);
+				int index = get_first_empty_index();
 
-	int range_start = atoi(argv[1]);
-	int range_end = atoi(argv[2]);
-	int threads_count = atoi(argv[3]);
-	int prime_count = 0;
-	int range_length = (range_end - range_start) / threads_count;
-	pthread_t *tid = (pthread_t *) malloc(threads_count*sizeof(pthread_t));
-	par_t *args_tab = (par_t *) malloc(threads_count*sizeof(par_t));
-
-	int i, status;
-	for(i = 0; i < threads_count; i++) {
-		args_tab[i].numer = i;
-		args_tab[i].pocz = range_start + i * range_length;
-		args_tab[i].kon = range_start + (i+1) * range_length;
-		par_t *args = &args_tab[i];
-		pthread_create(&tid[i], NULL, count_primes, (void *)args);
+				absolute_time_to_finish[index] = time(NULL) + relative_time;
+				pthread_create(&tid[index], NULL, thread_function, (void *) relative_time);
+				bubble_sort();
+				int i = 0;
+				while(tid[i] > -1) {
+					s_param *args = malloc(sizeof(s_param));
+					args->sched_priority = i+1;
+					printf("Watek %d, index %d, priorytet %d\n", tid[i], i, i+1);
+					pthread_setschedparam(tid[i], SCHED_FIFO, args);
+					i++;
+				}
+			}
+		} else {
+			printf("Sorry, max threads count attained\n");
+		}
 	}
-	for(i = 0; i < threads_count; i++) {
-		pthread_join(tid[i], (void*)&status);
-		printf("watek %d zakonczony, kod powrotu %d\n", tid[i], status);
-		prime_count += status;
-	}
-
-	printf("Liczb pierwszych: %d\n", prime_count);
 
 	return 0;
 }

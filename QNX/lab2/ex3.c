@@ -2,72 +2,105 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
-#define SIZE 5
+#include <math.h>
 
-pthread_mutex_t region_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t space_available = PTHREAD_COND_INITIALIZER;
-pthread_cond_t data_available = PTHREAD_COND_INITIALIZER;
+typedef struct {
+   int pocz;    // poczatek zakresu
+   int kon;      // koniec zakresu
+   int numer;  // numer watku
+} par_t;
 
-int products[SIZE];
-int size = 0;
-int front, rear = 0;
+volatile int running_threads = 0;
+volatile int p_count = 0;
+pthread_mutex_t running_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 
-void add_product(int i) {
-	products[rear] = i;
-	rear = (rear + 1) % SIZE;
-	size++;
+void *count_primes2(void *arg)
+{
+	par_t *args = (par_t *)arg;
+
+	sleep(1);
+
+	int primes_count = 0;
+
+	printf("Proces: %d, watek: %d\n", getpid(), args->numer);
+	int i;
+	for(i = args->pocz; i < args->kon; i++) {
+		int c;
+		int prime = 1;
+		for (c = 2; c <= i/2; c++) {
+			if (i % c == 0) {
+				prime = 0;
+				break;
+			}
+		}
+		if (prime && i != 0 && i != 1)
+			primes_count++;
+	}
+
+	//sleep(15 - args->numer);
+
+	printf("\twatek: %d, poczatek %d, koniec %d, primes %d\n", args->numer, args->pocz, args->kon, primes_count);
+
+	free(arg);
+
+	pthread_mutex_lock(&running_mutex);
+	p_count += primes_count;
+	running_threads--;
+	if (!running_threads) {
+		pthread_cond_signal(&cond);
+	}
+	pthread_mutex_unlock(&running_mutex);
+
+
+	return 0;
 }
 
-int get_product() {
-	int v;
-	v = products[front];
-	front = (front + 1) % SIZE;
-	size--;
-	return v;
-}
+int main2(int argc, char *argv[])
+{
+	if(argc != 4) {
+		printf("Proper usage: ./lab2 range_start range_end thread_count\n");
+		return 0;
+	}
 
-void *producer() {
+
+
+	int range_start = atoi(argv[1]);
+	int range_end = atoi(argv[2]);
+	int threads_count = atoi(argv[3]);
+	int range_length = (range_end - range_start) / (threads_count * 4);
+
 	int i = 0;
-	while (1) {
+	pthread_t tid;
 
-		pthread_mutex_lock(&region_mutex);
-		if (size == SIZE) {
-			pthread_cond_wait(&space_available, &region_mutex);
+	while(1) {
+		if(running_threads < threads_count) {
+			if (range_start + (i+1)*range_length <= range_end) {
+				par_t *args = malloc(sizeof(par_t));
+				args->numer = i;
+				args->pocz = range_start + i * range_length;
+				args->kon = range_start + (i+1) * range_length;
+				pthread_create(&tid, NULL, count_primes2, (void *)args);
+				pthread_mutex_lock(&running_mutex);
+				running_threads++;
+				pthread_mutex_unlock(&running_mutex);
+				i++;
+			} else {
+				printf("%d\n", i);
+				break;
+			}
 		}
-        //sleep(1);
-		add_product(i);
-		printf("produced %d\n", i);
-		pthread_cond_signal(&data_available);
-		pthread_mutex_unlock(&region_mutex);
-		i = i + 1;
 	}
-	return 0;
-}
 
-void *consumer() {
-	int i, v;
-	for (i = 0; i < 100; i++) {
-		pthread_mutex_lock(&region_mutex);
-		if (size == 0) {
-			pthread_cond_wait(&data_available, &region_mutex);
-		}
-		sleep(1);
-		v = get_product();
-		pthread_cond_signal(&space_available);
-		pthread_mutex_unlock(&region_mutex);
-		printf("got %d\n", v);
+	pthread_mutex_lock(&running_mutex);
+	while(running_threads > 0) {
+		pthread_cond_wait( &cond, &running_mutex );
 	}
+	printf("Liczb pierwszych: %d\n", p_count);
+	pthread_mutex_unlock(&running_mutex);
+
+
+
+
 	return 0;
 }
-
-int main3() {
-	pthread_t producer_thread;
-	pthread_t consumer_thread;
-
-	pthread_create(&consumer_thread, NULL, consumer, NULL);
-	pthread_create(&producer_thread, NULL, producer, NULL);
-	pthread_join(consumer_thread, NULL);
-	return 0;
-}
-
-
