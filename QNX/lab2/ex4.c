@@ -24,6 +24,10 @@ void *reader(void *args) {
 
 	pthread_mutex_lock(&num_readers_mutex);
 	num_readers++;
+	if(num_readers == 1) {
+		reading_room_taken = 1;
+		pthread_cond_broadcast(&readers);
+	}
 	pthread_mutex_unlock(&num_readers_mutex);
 
 	pthread_mutex_unlock(&reading_room_mutex);
@@ -41,7 +45,7 @@ void *reader(void *args) {
 		pthread_cond_signal(&writers);
 	}
 	pthread_mutex_unlock(&num_readers_mutex);
-	pthread_exit(NULL);
+	return (void *)0;
 }
 
 void *writer(void *args) {
@@ -53,6 +57,7 @@ void *writer(void *args) {
 	} else {
 		pthread_cond_wait(&writers, &reading_room_mutex);
 	}
+	reading_room_taken = 1;
 	pthread_mutex_unlock(&reading_room_mutex);
 
 	printf("start writing %d \n", i);
@@ -63,7 +68,7 @@ void *writer(void *args) {
 	reading_room_taken = 0;
 	pthread_mutex_unlock(&reading_room_mutex);
 	pthread_cond_signal(&readers);
-	pthread_exit(NULL);
+	return (void *)0;
 }
 
 int main() {
