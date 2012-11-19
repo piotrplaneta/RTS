@@ -208,7 +208,7 @@ int main(int argc, char **argv) {
 				add_messaging_data(rcvid, msg, info);
 				status = MsgReply(rcvid, EOK, NULL, 0);
 				if(-1 == status) perror("MsgReply");
-		    } else if (msg.type == MSG_CLIENTS_COUNT) {
+			} else if (msg.type == MSG_CLIENTS_COUNT) {
 				msg.clients_count = clients_count;
 				status = MsgReply(rcvid, EOK, &msg, sizeof(msg));
 				if(-1 == status) perror("MsgReply");
